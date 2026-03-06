@@ -1,0 +1,1768 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Teltonika TAT240 Dashboard</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #1a1a2e;
+      color: #eee;
+      min-height: 100vh;
+    }
+    header {
+      background: #16213e;
+      padding: 1rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid #0f3460;
+    }
+    header h1 { font-size: 1.5rem; color: #00d9ff; }
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #ff4757;
+    }
+    .status-dot.connected { background: #2ed573; }
+
+    .container {
+      display: grid;
+      grid-template-columns: 1fr 420px;
+      gap: 1rem;
+      padding: 1rem;
+      height: calc(100vh - 70px);
+    }
+
+    .map-container {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    #map {
+      border-radius: 8px;
+      flex: 1;
+      min-height: 400px;
+    }
+
+    .map-controls {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+    .map-controls button {
+      background: #16213e;
+      border: 1px solid #0f3460;
+      color: #eee;
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.8rem;
+      transition: background 0.2s;
+    }
+    .map-controls button:hover { background: #0f3460; }
+    .map-controls button.active { background: #00d9ff; color: #1a1a2e; }
+
+    .sidebar {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      overflow-y: auto;
+    }
+
+    .card {
+      background: #16213e;
+      border-radius: 8px;
+      padding: 1rem;
+      border: 1px solid #0f3460;
+    }
+    .card h2 {
+      font-size: 0.85rem;
+      color: #00d9ff;
+      margin-bottom: 0.5rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0.5rem;
+    }
+    .stat-item {
+      background: #1a1a2e;
+      padding: 0.5rem;
+      border-radius: 6px;
+      text-align: center;
+    }
+    .stat-value { font-size: 1.2rem; font-weight: bold; color: #00d9ff; }
+    .stat-label { font-size: 0.65rem; color: #888; text-transform: uppercase; }
+
+    .device-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      max-height: 120px;
+      overflow-y: auto;
+    }
+    .device-item {
+      background: #1a1a2e;
+      padding: 0.5rem 0.75rem;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.2s;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .device-item:hover { background: #0f3460; }
+    .device-item.selected { border: 1px solid #00d9ff; }
+    .device-imei { font-family: monospace; font-size: 0.85rem; }
+    .device-status { font-size: 0.7rem; }
+    .device-status.online { color: #2ed573; }
+    .device-status.offline { color: #888; }
+
+    .data-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.4rem;
+    }
+    .data-grid.three-col { grid-template-columns: 1fr 1fr 1fr; }
+    .data-item {
+      background: #1a1a2e;
+      padding: 0.5rem;
+      border-radius: 6px;
+    }
+    .data-label { font-size: 0.65rem; color: #888; text-transform: uppercase; }
+    .data-value { font-size: 1rem; font-weight: 600; margin-top: 0.15rem; }
+    .data-value.ok { color: #2ed573; }
+    .data-value.warning { color: #ffa502; }
+    .data-value.danger { color: #ff4757; }
+    .data-unit { font-size: 0.65rem; color: #666; margin-left: 0.2rem; }
+
+    .section-title {
+      font-size: 0.7rem;
+      color: #00d9ff;
+      margin: 0.75rem 0 0.4rem 0;
+      padding-top: 0.5rem;
+      border-top: 1px solid #0f3460;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    .section-title:first-child { margin-top: 0; padding-top: 0; border-top: none; }
+
+    .speed-chart {
+      height: 80px;
+      background: #1a1a2e;
+      border-radius: 6px;
+      padding: 0.5rem;
+      position: relative;
+    }
+    .speed-chart canvas { width: 100%; height: 100%; }
+
+    .io-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.2rem;
+      font-size: 0.75rem;
+      max-height: 150px;
+      overflow-y: auto;
+    }
+    .io-item {
+      background: #1a1a2e;
+      padding: 0.35rem 0.5rem;
+      border-radius: 4px;
+      display: flex;
+      justify-content: space-between;
+    }
+    .io-name { color: #888; }
+    .io-value { color: #eee; font-family: monospace; }
+
+    .log-container {
+      min-height: 200px;
+      max-height: 400px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .log-list {
+      flex: 1;
+      overflow-y: auto;
+      font-family: monospace;
+      font-size: 0.75rem;
+      background: #0d0d1a;
+      border-radius: 6px;
+      padding: 0.5rem;
+    }
+    .log-entry { padding: 0.3rem 0; border-bottom: 1px solid #1a1a2e; cursor: pointer; }
+    .log-entry:hover { background: #1a1a2e; }
+    .log-time { color: #888; }
+    .log-event { color: #00d9ff; }
+    .log-data { color: #2ed573; }
+    .log-json {
+      display: none;
+      background: #0a0a12;
+      padding: 0.5rem;
+      margin-top: 0.3rem;
+      border-radius: 4px;
+      font-size: 0.65rem;
+      white-space: pre-wrap;
+      word-break: break-all;
+      color: #666;
+      max-height: 200px;
+      overflow: auto;
+    }
+    .log-entry.expanded .log-json { display: block; }
+    .log-expand { color: #555; font-size: 0.7rem; margin-left: 0.5rem; }
+
+    .no-data { color: #666; text-align: center; padding: 1rem; }
+
+    .alert-banner {
+      background: #ff4757;
+      color: white;
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      margin-bottom: 0.5rem;
+      display: none;
+      animation: pulse 0.5s infinite;
+      font-size: 0.9rem;
+    }
+    .alert-banner.show { display: block; }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; background: #ff4757; }
+      50% { opacity: 0.9; background: #ff6b6b; }
+    }
+
+    .fullscreen-alert {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(255, 71, 87, 0.95);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      flex-direction: column;
+      z-index: 9999;
+      color: white;
+      text-align: center;
+    }
+    .fullscreen-alert.show { display: flex; }
+    .fullscreen-alert h1 { font-size: 3rem; margin-bottom: 1rem; animation: shake 0.5s infinite; }
+    .fullscreen-alert p { font-size: 1.2rem; margin-bottom: 1.5rem; }
+    .fullscreen-alert button {
+      background: white; color: #ff4757; border: none;
+      padding: 0.75rem 1.5rem; font-size: 1rem; border-radius: 8px; cursor: pointer;
+    }
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      25% { transform: translateX(-5px); }
+      75% { transform: translateX(5px); }
+    }
+
+    .geofence-controls {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .geofence-controls input {
+      background: #1a1a2e;
+      border: 1px solid #0f3460;
+      color: #eee;
+      padding: 0.4rem 0.6rem;
+      border-radius: 4px;
+      width: 80px;
+      font-size: 0.8rem;
+    }
+    .geofence-controls label {
+      font-size: 0.75rem;
+      color: #888;
+    }
+    .geofence-controls button {
+      background: #16213e;
+      border: 1px solid #0f3460;
+      color: #eee;
+      padding: 0.4rem 0.8rem;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.75rem;
+    }
+    .geofence-controls button:hover { background: #0f3460; }
+    .geofence-controls button.active { background: #ffa502; color: #1a1a2e; }
+
+    .playback-controls {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+    }
+    .playback-controls input[type="range"] {
+      flex: 1;
+      accent-color: #00d9ff;
+    }
+    .playback-time {
+      font-size: 0.75rem;
+      color: #888;
+      min-width: 100px;
+    }
+
+    @media (max-width: 900px) {
+      .container { grid-template-columns: 1fr; height: auto; }
+      #map { height: 300px; }
+      .stats-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    /* Debug Panel */
+    #debugToggle {
+      position: fixed;
+      bottom: 1rem;
+      right: 1rem;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: #16213e;
+      border: 1px solid #0f3460;
+      color: #888;
+      font-size: 1.2rem;
+      cursor: pointer;
+      z-index: 1000;
+      opacity: 0.5;
+      transition: opacity 0.2s, background 0.2s;
+    }
+    #debugToggle:hover { opacity: 1; background: #0f3460; }
+    #debugToggle.active { opacity: 1; background: #00d9ff; color: #1a1a2e; }
+
+    .debug-container {
+      font-family: monospace;
+      font-size: 0.7rem;
+      background: #0d0d1a;
+      border-radius: 6px;
+      padding: 0.5rem;
+      max-height: 400px;
+      overflow: auto;
+    }
+    .debug-section {
+      margin-bottom: 0.75rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid #1a1a2e;
+    }
+    .debug-section:last-child { border-bottom: none; margin-bottom: 0; }
+    .debug-section-title {
+      color: #00d9ff;
+      font-weight: bold;
+      margin-bottom: 0.25rem;
+    }
+    .debug-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 0.15rem 0;
+    }
+    .debug-key { color: #888; }
+    .debug-value { color: #2ed573; }
+    .debug-value.alert { color: #ff4757; }
+    .debug-raw {
+      white-space: pre-wrap;
+      word-break: break-all;
+      color: #666;
+      font-size: 0.65rem;
+      max-height: 150px;
+      overflow: auto;
+      background: #0a0a12;
+      padding: 0.5rem;
+      border-radius: 4px;
+      margin-top: 0.5rem;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Teltonika TAT240 Dashboard</h1>
+    <div class="status">
+      <div class="status-dot" id="statusDot"></div>
+      <span id="statusText">Connecting...</span>
+    </div>
+  </header>
+
+  <div class="container">
+    <div class="map-container">
+      <div id="map"></div>
+      <div class="map-controls">
+        <button onclick="toggleRoute()" id="btnRoute" class="active">Show Route</button>
+        <button onclick="toggleMarkers()" id="btnMarkers" class="active">Show Points</button>
+        <button onclick="centerOnDevice()">Center on Device</button>
+        <button onclick="clearRoute()">Clear Route</button>
+        <button onclick="fitAllPoints()">Fit All</button>
+        <button onclick="togglePlayback()" id="btnPlayback">Playback</button>
+      </div>
+      <div class="playback-controls" id="playbackControls" style="display:none;">
+        <button onclick="playbackPrev()">⏮</button>
+        <button onclick="playbackToggle()" id="btnPlayPause">▶</button>
+        <button onclick="playbackNext()">⏭</button>
+        <input type="range" id="playbackSlider" min="0" max="100" value="0" oninput="playbackSeek(this.value)">
+        <span class="playback-time" id="playbackTime">--:--</span>
+      </div>
+    </div>
+
+    <div class="sidebar">
+      <div class="alert-banner" id="alertBanner">
+        <strong>ALERT:</strong> <span id="alertText"></span>
+      </div>
+
+      <!-- Trip Statistics -->
+      <div class="card">
+        <h2>Trip Statistics</h2>
+        <div class="stats-grid">
+          <div class="stat-item">
+            <div class="stat-value" id="statDistance">0</div>
+            <div class="stat-label">km traveled</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-value" id="statAvgSpeed">0</div>
+            <div class="stat-label">avg km/h</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-value" id="statMaxSpeed">0</div>
+            <div class="stat-label">max km/h</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-value" id="statPoints">0</div>
+            <div class="stat-label">gps points</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Speed Chart -->
+      <div class="card">
+        <h2>Speed History</h2>
+        <div class="speed-chart">
+          <canvas id="speedChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Devices -->
+      <div class="card">
+        <h2>Devices</h2>
+        <div class="device-list" id="deviceList">
+          <div class="no-data">No devices connected</div>
+        </div>
+      </div>
+
+      <!-- Geofence -->
+      <div class="card">
+        <h2>Geofence</h2>
+        <div class="geofence-controls">
+          <label>Radius:</label>
+          <input type="number" id="geofenceRadius" value="100" min="10" max="10000"> m
+          <button onclick="setGeofence()">At Device</button>
+          <button onclick="startDrawGeofence()" id="btnDrawGeofence">Draw on Map</button>
+          <button onclick="clearGeofence()">Clear</button>
+        </div>
+        <div id="geofenceInfo" style="font-size:0.75rem;color:#888;margin-top:0.5rem;"></div>
+      </div>
+
+      <!-- Device Data -->
+      <div class="card">
+        <h2>Device Data</h2>
+        <div id="dataContainer">
+          <div class="no-data">Select a device</div>
+        </div>
+      </div>
+
+      <!-- Live Log -->
+      <div class="card log-container">
+        <h2>Live Log <span style="font-size:0.7rem;color:#666;font-weight:normal;">(click entries to expand)</span></h2>
+        <div class="log-list" id="logList"></div>
+      </div>
+
+      <!-- Debug Panel (hidden by default) -->
+      <div class="card" id="debugCard" style="display:none;">
+        <h2>Debug Data <button onclick="copyDebug()" style="float:right;font-size:0.7rem;padding:0.2rem 0.5rem;">Copy JSON</button></h2>
+        <div id="debugContainer" class="debug-container"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Debug Toggle Button (bottom right) -->
+  <button id="debugToggle" onclick="toggleDebug()" title="Toggle Debug Panel">🐛</button>
+
+  <div class="fullscreen-alert" id="fullscreenAlert">
+    <h1>🚨 ALERT 🚨</h1>
+    <p id="fullscreenAlertText">Alert detected!</p>
+    <p id="fullscreenAlertTime"></p>
+    <button onclick="dismissAlert()">DISMISS ALERT</button>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    // Initialize map
+    const map = L.map('map').setView([64.95, 25.56], 12);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap'
+    }).addTo(map);
+
+    // Map layers
+    const markers = {};
+    const pointMarkers = {};  // Individual GPS fix points
+    const paths = {};
+    let geofenceCircle = null;
+    let geofenceCenter = null;
+    let showRoute = true;
+    let showMarkers = true;
+
+    // State
+    let devices = [];
+    let positions = [];
+    let selectedImei = null;
+    let latestRecord = null;
+    let allRecords = [];  // Store all records for playback/stats
+    let speedHistory = [];
+
+    // Playback state
+    let playbackMode = false;
+    let playbackIndex = 0;
+    let playbackInterval = null;
+    let playbackMarker = null;
+
+    // Alert state
+    let alertActive = false;
+    let alertSound = null;
+    let lastAlertState = {};
+
+    // WebSocket
+    let ws;
+
+    // Custom icons
+    const currentIcon = L.divIcon({
+      className: 'current-marker',
+      html: '<div style="background:#00d9ff;width:20px;height:20px;border-radius:50%;border:3px solid white;box-shadow:0 0 15px rgba(0,217,255,0.6);"></div>',
+      iconSize: [20, 20],
+      iconAnchor: [10, 10]
+    });
+
+    const pointIcon = L.divIcon({
+      className: 'point-marker',
+      html: '<div style="background:#ffa502;width:14px;height:14px;border-radius:50%;border:2px solid white;box-shadow:0 0 5px rgba(255,165,2,0.4);"></div>',
+      iconSize: [14, 14],
+      iconAnchor: [7, 7]
+    });
+
+    const alertIcon = L.divIcon({
+      className: 'alert-marker',
+      html: '<div style="background:#ff4757;width:24px;height:24px;border-radius:50%;border:3px solid white;box-shadow:0 0 20px rgba(255,71,87,0.7);animation:pulse 1s infinite;"></div>',
+      iconSize: [24, 24],
+      iconAnchor: [12, 12]
+    });
+
+    function connect() {
+      const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      ws = new WebSocket(`${protocol}//${location.host}/ws`);
+
+      ws.onopen = () => {
+        document.getElementById('statusDot').classList.add('connected');
+        document.getElementById('statusText').textContent = 'Connected';
+        addLog('system', 'Connected to server');
+      };
+
+      ws.onclose = () => {
+        document.getElementById('statusDot').classList.remove('connected');
+        document.getElementById('statusText').textContent = 'Disconnected';
+        addLog('system', 'Disconnected, reconnecting...');
+        setTimeout(connect, 3000);
+      };
+
+      ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+        handleMessage(msg);
+      };
+    }
+
+    function handleMessage(msg) {
+      switch (msg.type) {
+        case 'init':
+          devices = msg.data.devices || [];
+          positions = msg.data.positions || [];
+          renderDevices();
+          updateMarkers();
+          addLog('system', `Loaded ${devices.length} devices`);
+          if (devices.length > 0 && !selectedImei) {
+            selectDevice(devices[0].imei);
+          }
+          break;
+
+        case 'device_connected':
+          addLog('event', `Device connected: ${msg.data.imei}`);
+          fetchDevices();
+          break;
+
+        case 'new_records':
+          const { imei, records } = msg.data;
+
+          // Sort incoming records by timestamp
+          records.sort((a, b) => a.timestamp - b.timestamp);
+
+          for (const record of records) {
+            addLog('data', `Record from ${imei}`, record);
+          }
+
+          for (const record of records) {
+            updatePosition(imei, record);
+            if (imei === selectedImei) {
+              // Check if record already exists (by timestamp)
+              const exists = allRecords.some(r => r.timestamp === record.timestamp);
+              if (!exists) {
+                allRecords.push(record);
+                // Keep allRecords sorted
+                allRecords.sort((a, b) => a.timestamp - b.timestamp);
+              }
+              updateSpeedHistory(record);
+              checkGeofence(record);
+            }
+          }
+
+          if (imei === selectedImei && records.length > 0) {
+            // Get the actual latest record after sorting
+            latestRecord = allRecords[allRecords.length - 1];
+            renderAllData(latestRecord);
+            checkAlerts(latestRecord);
+            updateStats();
+
+            // Rebuild route to ensure correct order
+            rebuildRoute(imei);
+          }
+          break;
+      }
+    }
+
+    function updatePosition(imei, record) {
+      const { gps } = record;
+      const hasValidGps = gps && (gps.latitude !== 0 || gps.longitude !== 0);
+      const lastKnown = record.lastKnownPosition;
+
+      let latlng;
+      if (hasValidGps) {
+        latlng = [gps.latitude, gps.longitude];
+      } else if (lastKnown) {
+        latlng = [lastKnown.latitude, lastKnown.longitude];
+      } else {
+        return;
+      }
+
+      const io = record.io?.parsed || {};
+      const hasAlert = io.tamperDetection?.value > 0;
+      const icon = hasAlert ? alertIcon : currentIcon;
+
+      // Update main marker
+      if (markers[imei]) {
+        markers[imei].setLatLng(latlng);
+        markers[imei].setIcon(icon);
+      } else {
+        markers[imei] = L.marker(latlng, { icon })
+          .addTo(map)
+          .bindPopup(`IMEI: ${imei}`);
+      }
+
+      // Update popup
+      let popup = `<b>IMEI:</b> ${imei}<br>`;
+      if (hasAlert) popup += `<b style="color:red">⚠️ TAMPER ALERT!</b><br>`;
+      if (hasValidGps) {
+        popup += `<b>Speed:</b> ${gps.speed} km/h<br>`;
+        popup += `<b>Altitude:</b> ${gps.altitude} m<br>`;
+        popup += `<b>Heading:</b> ${gps.angle}°<br>`;
+      }
+      popup += `<b>Time:</b> ${new Date(record.datetime).toLocaleString()}`;
+      markers[imei].setPopupContent(popup);
+
+      // Note: Point markers and route are now handled by rebuildRoute()
+      // which is called after adding records to allRecords
+
+      if (imei === selectedImei && !playbackMode) {
+        map.panTo(latlng);
+      }
+    }
+
+    function updateMarkers() {
+      for (const pos of positions) {
+        if (pos.gps && (pos.gps.latitude !== 0 || pos.gps.longitude !== 0)) {
+          updatePosition(pos.imei, pos);
+        }
+      }
+    }
+
+    function updateSpeedHistory(record) {
+      if (record.gps && (record.gps.latitude !== 0 || record.gps.longitude !== 0)) {
+        speedHistory.push({
+          time: new Date(record.datetime),
+          speed: record.gps.speed || 0,
+          calculatedSpeed: calculateSpeed(record)
+        });
+        if (speedHistory.length > 100) speedHistory.shift();
+        drawSpeedChart();
+      }
+    }
+
+    function calculateSpeed(record) {
+      if (allRecords.length < 2) return 0;
+      const prev = allRecords[allRecords.length - 2];
+      if (!prev.gps || !record.gps) return 0;
+      if (prev.gps.latitude === 0 || record.gps.latitude === 0) return 0;
+
+      const dist = haversineDistance(
+        prev.gps.latitude, prev.gps.longitude,
+        record.gps.latitude, record.gps.longitude
+      );
+      const timeDiff = (record.timestamp - prev.timestamp) / 1000 / 3600; // hours
+      if (timeDiff <= 0) return 0;
+      return Math.round(dist / timeDiff);
+    }
+
+    function haversineDistance(lat1, lon1, lat2, lon2) {
+      const R = 6371; // km
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                Math.sin(dLon/2) * Math.sin(dLon/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      return R * c;
+    }
+
+    function updateStats() {
+      let totalDist = 0;
+      let maxSpeed = 0;
+      let totalSpeed = 0;
+      let speedCount = 0;
+      let prevRecord = null;
+
+      for (const record of allRecords) {
+        if (!record.gps || record.gps.latitude === 0) continue;
+
+        const speed = record.gps.speed || 0;
+        if (speed > maxSpeed) maxSpeed = speed;
+        totalSpeed += speed;
+        speedCount++;
+
+        if (prevRecord && prevRecord.gps && prevRecord.gps.latitude !== 0) {
+          totalDist += haversineDistance(
+            prevRecord.gps.latitude, prevRecord.gps.longitude,
+            record.gps.latitude, record.gps.longitude
+          );
+        }
+        prevRecord = record;
+      }
+
+      document.getElementById('statDistance').textContent = totalDist.toFixed(2);
+      document.getElementById('statAvgSpeed').textContent = speedCount > 0 ? Math.round(totalSpeed / speedCount) : 0;
+      document.getElementById('statMaxSpeed').textContent = maxSpeed;
+      document.getElementById('statPoints').textContent = allRecords.filter(r => r.gps && r.gps.latitude !== 0).length;
+    }
+
+    function drawSpeedChart() {
+      const canvas = document.getElementById('speedChart');
+      const ctx = canvas.getContext('2d');
+      const width = canvas.offsetWidth;
+      const height = canvas.offsetHeight;
+      canvas.width = width;
+      canvas.height = height;
+
+      ctx.clearRect(0, 0, width, height);
+
+      if (speedHistory.length < 2) return;
+
+      const maxSpeed = Math.max(...speedHistory.map(s => s.speed), 10);
+      const padding = 5;
+
+      // Draw grid
+      ctx.strokeStyle = '#0f3460';
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= 4; i++) {
+        const y = padding + (height - padding * 2) * i / 4;
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(width, y);
+        ctx.stroke();
+      }
+
+      // Draw speed line
+      ctx.strokeStyle = '#00d9ff';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+
+      speedHistory.forEach((point, i) => {
+        const x = (i / (speedHistory.length - 1)) * width;
+        const y = height - padding - (point.speed / maxSpeed) * (height - padding * 2);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+
+      // Fill under line
+      ctx.lineTo(width, height);
+      ctx.lineTo(0, height);
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(0, 217, 255, 0.1)';
+      ctx.fill();
+    }
+
+    // Geofence functions
+    let drawingGeofence = false;
+
+    function setGeofence() {
+      if (!latestRecord || !latestRecord.gps) return;
+      const { latitude, longitude } = latestRecord.gps;
+      if (latitude === 0 && longitude === 0) {
+        alert('No valid GPS position to set geofence');
+        return;
+      }
+
+      const radius = parseInt(document.getElementById('geofenceRadius').value) || 100;
+      createGeofence([latitude, longitude], radius);
+      addLog('event', `Geofence set at device: ${radius}m radius`);
+    }
+
+    function startDrawGeofence() {
+      drawingGeofence = !drawingGeofence;
+      const btn = document.getElementById('btnDrawGeofence');
+      const info = document.getElementById('geofenceInfo');
+
+      if (drawingGeofence) {
+        btn.classList.add('active');
+        btn.textContent = 'Cancel Draw';
+        info.textContent = 'Click on map to set geofence center...';
+        map.getContainer().style.cursor = 'crosshair';
+      } else {
+        btn.classList.remove('active');
+        btn.textContent = 'Draw on Map';
+        info.textContent = '';
+        map.getContainer().style.cursor = '';
+      }
+    }
+
+    function createGeofence(center, radius) {
+      geofenceCenter = center;
+
+      if (geofenceCircle) map.removeLayer(geofenceCircle);
+      geofenceCircle = L.circle(geofenceCenter, {
+        radius: radius,
+        color: '#ffa502',
+        fillColor: '#ffa502',
+        fillOpacity: 0.15,
+        weight: 3,
+        dashArray: '10, 5'
+      }).addTo(map);
+
+      // Add center marker
+      if (window.geofenceCenterMarker) map.removeLayer(window.geofenceCenterMarker);
+      window.geofenceCenterMarker = L.circleMarker(geofenceCenter, {
+        radius: 6,
+        color: '#ffa502',
+        fillColor: '#ffa502',
+        fillOpacity: 1
+      }).addTo(map).bindPopup(`Geofence Center<br>${center[0].toFixed(5)}, ${center[1].toFixed(5)}<br>Radius: ${radius}m`);
+
+      document.getElementById('geofenceInfo').innerHTML =
+        `<span style="color:#ffa502;">● Active:</span> ${center[0].toFixed(5)}, ${center[1].toFixed(5)} | ${radius}m`;
+    }
+
+    // Map click handler for drawing geofence
+    map.on('click', function(e) {
+      if (!drawingGeofence) return;
+
+      const radius = parseInt(document.getElementById('geofenceRadius').value) || 100;
+      createGeofence([e.latlng.lat, e.latlng.lng], radius);
+      addLog('event', `Geofence drawn: ${radius}m at ${e.latlng.lat.toFixed(5)}, ${e.latlng.lng.toFixed(5)}`);
+
+      // Exit drawing mode
+      startDrawGeofence();
+    });
+
+    function clearGeofence() {
+      if (geofenceCircle) {
+        map.removeLayer(geofenceCircle);
+        geofenceCircle = null;
+        geofenceCenter = null;
+      }
+      if (window.geofenceCenterMarker) {
+        map.removeLayer(window.geofenceCenterMarker);
+        window.geofenceCenterMarker = null;
+      }
+      document.getElementById('geofenceInfo').textContent = '';
+      addLog('event', 'Geofence cleared');
+
+      // Exit drawing mode if active
+      if (drawingGeofence) startDrawGeofence();
+    }
+
+    function checkGeofence(record) {
+      if (!geofenceCenter || !record.gps) return;
+      if (record.gps.latitude === 0 && record.gps.longitude === 0) return;
+
+      const radius = parseInt(document.getElementById('geofenceRadius').value) || 100;
+      const dist = haversineDistance(
+        geofenceCenter[0], geofenceCenter[1],
+        record.gps.latitude, record.gps.longitude
+      ) * 1000; // convert to meters
+
+      if (dist > radius) {
+        const alerts = [`GEOFENCE BREACH! Device is ${Math.round(dist)}m away (limit: ${radius}m)`];
+        showFullscreenAlert(alerts);
+        addLog('event', `GEOFENCE BREACH: ${Math.round(dist)}m from center`);
+      }
+    }
+
+    // Playback functions
+    function togglePlayback() {
+      playbackMode = !playbackMode;
+      document.getElementById('btnPlayback').classList.toggle('active', playbackMode);
+      document.getElementById('playbackControls').style.display = playbackMode ? 'flex' : 'none';
+
+      if (playbackMode) {
+        playbackIndex = 0;
+        updatePlaybackSlider();
+        if (playbackMarker) map.removeLayer(playbackMarker);
+        playbackMarker = L.marker([0, 0], { icon: currentIcon }).addTo(map);
+      } else {
+        stopPlayback();
+        if (playbackMarker) {
+          map.removeLayer(playbackMarker);
+          playbackMarker = null;
+        }
+      }
+    }
+
+    function playbackToggle() {
+      if (playbackInterval) {
+        stopPlayback();
+      } else {
+        startPlayback();
+      }
+    }
+
+    function startPlayback() {
+      document.getElementById('btnPlayPause').textContent = '⏸';
+      playbackInterval = setInterval(() => {
+        playbackNext();
+      }, 500);
+    }
+
+    function stopPlayback() {
+      document.getElementById('btnPlayPause').textContent = '▶';
+      if (playbackInterval) {
+        clearInterval(playbackInterval);
+        playbackInterval = null;
+      }
+    }
+
+    function playbackNext() {
+      const validRecords = allRecords.filter(r => r.gps && r.gps.latitude !== 0);
+      if (validRecords.length === 0) return;
+      playbackIndex = Math.min(playbackIndex + 1, validRecords.length - 1);
+      showPlaybackPosition(validRecords[playbackIndex]);
+      updatePlaybackSlider();
+    }
+
+    function playbackPrev() {
+      const validRecords = allRecords.filter(r => r.gps && r.gps.latitude !== 0);
+      if (validRecords.length === 0) return;
+      playbackIndex = Math.max(playbackIndex - 1, 0);
+      showPlaybackPosition(validRecords[playbackIndex]);
+      updatePlaybackSlider();
+    }
+
+    function playbackSeek(value) {
+      const validRecords = allRecords.filter(r => r.gps && r.gps.latitude !== 0);
+      if (validRecords.length === 0) return;
+      playbackIndex = Math.floor((value / 100) * (validRecords.length - 1));
+      showPlaybackPosition(validRecords[playbackIndex]);
+    }
+
+    function showPlaybackPosition(record) {
+      if (!playbackMarker || !record.gps) return;
+      playbackMarker.setLatLng([record.gps.latitude, record.gps.longitude]);
+      map.panTo([record.gps.latitude, record.gps.longitude]);
+      document.getElementById('playbackTime').textContent = new Date(record.datetime).toLocaleTimeString();
+    }
+
+    function updatePlaybackSlider() {
+      const validRecords = allRecords.filter(r => r.gps && r.gps.latitude !== 0);
+      if (validRecords.length === 0) return;
+      const percent = (playbackIndex / Math.max(validRecords.length - 1, 1)) * 100;
+      document.getElementById('playbackSlider').value = percent;
+    }
+
+    // Map controls
+    function toggleRoute() {
+      showRoute = !showRoute;
+      document.getElementById('btnRoute').classList.toggle('active', showRoute);
+      if (selectedImei && paths[selectedImei]) {
+        if (showRoute) {
+          paths[selectedImei].addTo(map);
+        } else {
+          map.removeLayer(paths[selectedImei]);
+        }
+      }
+    }
+
+    function toggleMarkers() {
+      showMarkers = !showMarkers;
+      document.getElementById('btnMarkers').classList.toggle('active', showMarkers);
+      for (const key in pointMarkers) {
+        if (showMarkers) {
+          pointMarkers[key].addTo(map);
+        } else {
+          map.removeLayer(pointMarkers[key]);
+        }
+      }
+    }
+
+    function centerOnDevice() {
+      if (selectedImei && markers[selectedImei]) {
+        map.panTo(markers[selectedImei].getLatLng());
+        map.setZoom(15);
+      }
+    }
+
+    function clearRoute() {
+      if (selectedImei && paths[selectedImei]) {
+        paths[selectedImei].setLatLngs([]);
+      }
+      for (const key in pointMarkers) {
+        map.removeLayer(pointMarkers[key]);
+        delete pointMarkers[key];
+      }
+      allRecords = [];
+      speedHistory = [];
+      updateStats();
+      drawSpeedChart();
+    }
+
+    function rebuildRoute(imei) {
+      if (!imei) return;
+
+      // Build route from allRecords (already sorted)
+      const routeLatLngs = [];
+      for (const record of allRecords) {
+        if (record.gps && record.gps.latitude !== 0 && record.gps.longitude !== 0) {
+          routeLatLngs.push([record.gps.latitude, record.gps.longitude]);
+
+          // Ensure point marker exists
+          if (showMarkers) {
+            const pointKey = `${imei}_${record.timestamp}`;
+            if (!pointMarkers[pointKey]) {
+              const marker = L.marker([record.gps.latitude, record.gps.longitude], { icon: pointIcon })
+                .addTo(map)
+                .bindPopup(`Speed: ${record.gps.speed} km/h<br>Time: ${new Date(record.datetime).toLocaleTimeString()}`);
+              pointMarkers[pointKey] = marker;
+            }
+          }
+        }
+      }
+
+      // Update or create the polyline
+      if (routeLatLngs.length > 0) {
+        if (!paths[imei]) {
+          paths[imei] = L.polyline(routeLatLngs, {
+            color: '#00d9ff',
+            weight: 3,
+            opacity: 0.8
+          });
+        } else {
+          paths[imei].setLatLngs(routeLatLngs);
+        }
+        if (showRoute && !map.hasLayer(paths[imei])) {
+          paths[imei].addTo(map);
+        }
+      }
+    }
+
+    function fitAllPoints() {
+      const allLatLngs = [];
+      if (selectedImei && paths[selectedImei]) {
+        allLatLngs.push(...paths[selectedImei].getLatLngs());
+      }
+      if (allLatLngs.length > 0) {
+        map.fitBounds(L.latLngBounds(allLatLngs).pad(0.1));
+      }
+    }
+
+    function renderDevices() {
+      const container = document.getElementById('deviceList');
+      if (devices.length === 0) {
+        container.innerHTML = '<div class="no-data">No devices connected</div>';
+        return;
+      }
+
+      container.innerHTML = devices.map(d => `
+        <div class="device-item ${d.imei === selectedImei ? 'selected' : ''}"
+             onclick="selectDevice('${d.imei}')">
+          <span class="device-imei">${d.imei}</span>
+          <span class="device-status online">●</span>
+        </div>
+      `).join('');
+    }
+
+    function selectDevice(imei) {
+      selectedImei = imei;
+      allRecords = [];
+      speedHistory = [];
+      renderDevices();
+
+      // Clear old point markers
+      for (const key in pointMarkers) {
+        map.removeLayer(pointMarkers[key]);
+        delete pointMarkers[key];
+      }
+
+      // Clear old path for this device
+      if (paths[imei]) {
+        paths[imei].setLatLngs([]);
+      }
+
+      if (markers[imei]) {
+        map.panTo(markers[imei].getLatLng());
+        markers[imei].openPopup();
+      }
+
+      // Fetch records for this device
+      fetch(`/api/devices/${imei}/records?limit=100`)
+        .then(r => r.json())
+        .then(records => {
+          // Sort records by timestamp (oldest first)
+          records.sort((a, b) => a.timestamp - b.timestamp);
+          allRecords = records;
+
+          // Build route from historical records
+          const routeLatLngs = [];
+
+          for (const record of records) {
+            updateSpeedHistory(record);
+            if (record.gps && record.gps.latitude !== 0 && record.gps.longitude !== 0) {
+              const latlng = [record.gps.latitude, record.gps.longitude];
+
+              // Add to route
+              routeLatLngs.push(latlng);
+
+              // Add point marker
+              if (showMarkers) {
+                const pointKey = `${imei}_${record.timestamp}`;
+                if (!pointMarkers[pointKey]) {
+                  const marker = L.marker(latlng, { icon: pointIcon })
+                    .addTo(map)
+                    .bindPopup(`Speed: ${record.gps.speed} km/h<br>Time: ${new Date(record.datetime).toLocaleTimeString()}`);
+                  pointMarkers[pointKey] = marker;
+                }
+              }
+            }
+          }
+
+          // Create/update the polyline with all points
+          if (routeLatLngs.length > 0) {
+            if (!paths[imei]) {
+              paths[imei] = L.polyline(routeLatLngs, {
+                color: '#00d9ff',
+                weight: 3,
+                opacity: 0.8
+              });
+            } else {
+              paths[imei].setLatLngs(routeLatLngs);
+            }
+            if (showRoute) {
+              paths[imei].addTo(map);
+            }
+          }
+
+          updateStats();
+          if (records.length > 0) {
+            latestRecord = records[records.length - 1];
+            renderAllData(latestRecord);
+          }
+        })
+        .catch(() => {});
+    }
+
+    // Alert functions
+    function playAlertSound() {
+      try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const oscillator = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        oscillator.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        oscillator.frequency.value = 800;
+        oscillator.type = 'square';
+        gainNode.gain.value = 0.3;
+        oscillator.start();
+        let freq = 800;
+        const interval = setInterval(() => {
+          freq = freq === 800 ? 600 : 800;
+          oscillator.frequency.value = freq;
+        }, 200);
+        alertSound = { oscillator, audioCtx, interval };
+      } catch (e) {}
+    }
+
+    function stopAlertSound() {
+      if (alertSound) {
+        clearInterval(alertSound.interval);
+        alertSound.oscillator.stop();
+        alertSound.audioCtx.close();
+        alertSound = null;
+      }
+    }
+
+    function dismissAlert() {
+      alertActive = false;
+      stopAlertSound();
+      document.getElementById('fullscreenAlert').classList.remove('show');
+    }
+
+    function showFullscreenAlert(alerts) {
+      const fullscreen = document.getElementById('fullscreenAlert');
+      document.getElementById('fullscreenAlertText').textContent = alerts.join(' | ');
+      document.getElementById('fullscreenAlertTime').textContent =
+        `IMEI: ${selectedImei} | Time: ${new Date().toLocaleString()}`;
+      fullscreen.classList.add('show');
+      playAlertSound();
+      alertActive = true;
+      if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification('TAT240 ALERT!', { body: alerts.join(' | '), requireInteraction: true });
+      }
+    }
+
+    function checkAlerts(record) {
+      const alerts = [];
+      const io = record?.io?.parsed || {};
+      // Tamper detection:
+      // ID 520: tamperAlarm (0=restore, 1=alarm)
+      // ID 20019: tamperDetection (0=removed, 1=central, 2=attached, 3=detached)
+      const tamper520 = io.tamperAlarm?.value === 1;
+      const tamper20019 = io.tamperDetection?.value === 0 || io.tamperDetection?.value === 3;
+      const isTampered = tamper520 || tamper20019;
+      const currentState = {
+        tamper: isTampered,
+        jamming: io.jammingDetection?.value === 1,
+        crash: io.crashDetection?.value === 1,
+        towing: io.towingDetection?.value === 1
+      };
+
+      if (currentState.tamper) alerts.push('Tamper detected!');
+      if (currentState.jamming) alerts.push('GSM jamming detected!');
+      if (currentState.crash) alerts.push('Crash detected!');
+      if (currentState.towing) alerts.push('Towing detected!');
+
+      const banner = document.getElementById('alertBanner');
+      const text = document.getElementById('alertText');
+
+      if (alerts.length > 0) {
+        text.textContent = alerts.join(' | ');
+        banner.classList.add('show');
+        const isNew = (currentState.tamper && !lastAlertState.tamper) ||
+                      (currentState.jamming && !lastAlertState.jamming) ||
+                      (currentState.crash && !lastAlertState.crash) ||
+                      (currentState.towing && !lastAlertState.towing);
+        if (isNew) {
+          showFullscreenAlert(alerts);
+          addLog('event', `ALERT: ${alerts.join(' | ')}`);
+        }
+      } else {
+        banner.classList.remove('show');
+      }
+      lastAlertState = currentState;
+    }
+
+    // Format IO value with proper units and conversions
+    function formatIoValue(name, data) {
+      const val = data.value;
+      const unit = data.unit;
+
+      // Voltage conversions (mV -> V)
+      if (name.includes('Voltage') || name === 'externalVoltage' || name === 'batteryVoltage') {
+        return { value: (val / 1000).toFixed(2), unit: 'V', status: val > 3600 ? 'ok' : 'warning' };
+      }
+
+      // Current (mA)
+      if (name === 'batteryCurrent') {
+        return { value: val, unit: 'mA', status: 'ok' };
+      }
+
+      // Odometer (m -> km)
+      if (name === 'totalOdometer' || name === 'tripOdometer') {
+        return { value: (val / 1000).toFixed(2), unit: 'km', status: 'ok' };
+      }
+
+      // PDOP/HDOP (multiply by 0.1)
+      if (name === 'gnssPdop' || name === 'gnssHdop') {
+        const actual = (val * 0.1).toFixed(1);
+        return { value: actual, unit: '', status: actual < 2 ? 'ok' : actual < 5 ? 'warning' : 'danger' };
+      }
+
+      // GSM Signal (0-5 bars)
+      if (name === 'gsmSignal') {
+        const bars = '▂▄▆█'.slice(0, val) || '○';
+        return { value: `${bars} (${val}/5)`, unit: '', status: val >= 3 ? 'ok' : val >= 2 ? 'warning' : 'danger' };
+      }
+
+      // Binary states
+      if (name === 'ignition') {
+        return { value: val ? '🔑 ON' : '○ OFF', unit: '', status: val ? 'ok' : '' };
+      }
+      if (name === 'movement') {
+        return { value: val ? '🚗 Moving' : '🅿️ Still', unit: '', status: val ? 'warning' : 'ok' };
+      }
+
+      // Sleep mode
+      if (name === 'sleepMode') {
+        const modes = ['Awake', 'GPS Sleep', 'Deep Sleep', 'Online Deep', 'Ultra Deep'];
+        return { value: modes[val] || val, unit: '', status: val === 0 ? 'ok' : 'warning' };
+      }
+
+      // GNSS Status
+      if (name === 'gnssStatus') {
+        const states = ['Off', 'On (no fix)', 'On (fix)', 'Sleep', 'Deep Sleep'];
+        return { value: states[val] || val, unit: '', status: val === 2 ? 'ok' : val === 1 ? 'warning' : 'danger' };
+      }
+
+      // Network type
+      if (name === 'networkType') {
+        const types = ['3G', 'GSM', '4G/LTE'];
+        return { value: types[val] || val, unit: '', status: 'ok' };
+      }
+
+      // Battery level (%)
+      if (name === 'batteryLevel') {
+        return { value: val, unit: '%', status: val > 50 ? 'ok' : val > 20 ? 'warning' : 'danger' };
+      }
+
+      // Temperatures
+      if (name.includes('Temp') || name.includes('temp')) {
+        // BLE temps are *0.01
+        if (name.startsWith('ble') || name.startsWith('eye')) {
+          return { value: (val / 100).toFixed(1), unit: '°C', status: 'ok' };
+        }
+        return { value: val, unit: '°C', status: 'ok' };
+      }
+
+      // Humidity
+      if (name.includes('Humidity') || name.includes('humidity')) {
+        return { value: val, unit: '%', status: 'ok' };
+      }
+
+      // Fuel
+      if (name === 'obdFuelLevel' || name === 'fuelLevel') {
+        return { value: val, unit: '%', status: val > 20 ? 'ok' : val > 10 ? 'warning' : 'danger' };
+      }
+      if (name === 'obdFuelRate') {
+        return { value: (val / 100).toFixed(2), unit: 'L/h', status: 'ok' };
+      }
+
+      // Engine
+      if (name === 'obdEngineRpm') {
+        return { value: val, unit: 'rpm', status: val < 5000 ? 'ok' : 'warning' };
+      }
+      if (name === 'obdCoolantTemp') {
+        return { value: val, unit: '°C', status: val < 100 ? 'ok' : 'danger' };
+      }
+      if (name === 'obdEngineLoad' || name === 'obdThrottlePosition') {
+        return { value: val, unit: '%', status: 'ok' };
+      }
+
+      // Speed
+      if (name === 'speed' || name === 'obdVehicleSpeed') {
+        return { value: val, unit: 'km/h', status: val < 120 ? 'ok' : 'warning' };
+      }
+
+      // Tamper (TAT240)
+      if (name === 'tamperDetection') {
+        const labels = ['🚨 Removed!', '✓ Central', '✓ Attached', '🚨 Detached!'];
+        return { value: labels[val] || val, unit: '', status: (val === 0 || val === 3) ? 'danger' : 'ok' };
+      }
+      if (name === 'tamperAlarm') {
+        return { value: val === 1 ? '🚨 ALARM!' : '✓ OK', unit: '', status: val === 1 ? 'danger' : 'ok' };
+      }
+
+      // Default: return as-is with unit if available
+      return { value: val, unit: unit || '', status: 'ok' };
+    }
+
+    function renderAllData(record) {
+      const container = document.getElementById('dataContainer');
+      if (!record) {
+        container.innerHTML = '<div class="no-data">No data yet</div>';
+        return;
+      }
+
+      const gps = record.gps || {};
+      const io = record.io?.parsed || {};
+      const hasGpsFix = gps.latitude !== 0 || gps.longitude !== 0;
+      const lastKnown = record.lastKnownPosition;
+
+      let html = '';
+
+      // GPS Section
+      html += `<div class="section-title">📍 GPS</div><div class="data-grid">`;
+      if (hasGpsFix) {
+        html += dataItem('Latitude', gps.latitude?.toFixed(5) || '-', '°');
+        html += dataItem('Longitude', gps.longitude?.toFixed(5) || '-', '°');
+        html += dataItem('Speed', gps.speed || 0, 'km/h');
+        html += dataItem('Altitude', gps.altitude || 0, 'm');
+        html += dataItem('Heading', gps.angle || 0, '°');
+        html += dataItem('Satellites', gps.satellites || 0, '', gps.satellites > 6 ? 'ok' : 'warning');
+      } else {
+        html += dataItem('GPS', 'NO FIX', '', 'danger');
+        html += dataItem('Satellites', gps.satellites || 0);
+        if (lastKnown) {
+          html += dataItem('Last Known', `${lastKnown.latitude?.toFixed(4)}, ${lastKnown.longitude?.toFixed(4)}`, '', 'warning');
+        }
+      }
+      html += `</div>`;
+
+      // Vehicle Section (if ignition present - likely FMC800)
+      if (io.ignition || io.obdEngineRpm || io.obdFuelLevel) {
+        html += `<div class="section-title">🚗 Vehicle</div><div class="data-grid">`;
+        if (io.ignition) {
+          const f = formatIoValue('ignition', io.ignition);
+          html += dataItem('Ignition', f.value, f.unit, f.status);
+        }
+        if (io.obdEngineRpm) {
+          const f = formatIoValue('obdEngineRpm', io.obdEngineRpm);
+          html += dataItem('Engine RPM', f.value, f.unit, f.status);
+        }
+        if (io.obdCoolantTemp) {
+          const f = formatIoValue('obdCoolantTemp', io.obdCoolantTemp);
+          html += dataItem('Coolant Temp', f.value, f.unit, f.status);
+        }
+        if (io.obdFuelLevel) {
+          const f = formatIoValue('obdFuelLevel', io.obdFuelLevel);
+          html += dataItem('Fuel Level', f.value, f.unit, f.status);
+        }
+        if (io.obdVehicleSpeed) {
+          const f = formatIoValue('obdVehicleSpeed', io.obdVehicleSpeed);
+          html += dataItem('OBD Speed', f.value, f.unit, f.status);
+        }
+        if (io.obdThrottlePosition) {
+          const f = formatIoValue('obdThrottlePosition', io.obdThrottlePosition);
+          html += dataItem('Throttle', f.value, f.unit, f.status);
+        }
+        if (io.obdEngineLoad) {
+          const f = formatIoValue('obdEngineLoad', io.obdEngineLoad);
+          html += dataItem('Engine Load', f.value, f.unit, f.status);
+        }
+        if (io.totalOdometer) {
+          const f = formatIoValue('totalOdometer', io.totalOdometer);
+          html += dataItem('Odometer', f.value, f.unit, f.status);
+        }
+        if (io.tripOdometer) {
+          const f = formatIoValue('tripOdometer', io.tripOdometer);
+          html += dataItem('Trip', f.value, f.unit, f.status);
+        }
+        html += `</div>`;
+      }
+
+      // Power Section
+      html += `<div class="section-title">🔋 Power</div><div class="data-grid">`;
+      if (io.externalVoltage) {
+        const f = formatIoValue('externalVoltage', io.externalVoltage);
+        html += dataItem('External', f.value, f.unit, f.status);
+      }
+      if (io.batteryVoltage) {
+        const f = formatIoValue('batteryVoltage', io.batteryVoltage);
+        html += dataItem('Battery', f.value, f.unit, f.status);
+      }
+      if (io.batteryCurrent) {
+        const f = formatIoValue('batteryCurrent', io.batteryCurrent);
+        html += dataItem('Current', f.value, f.unit, f.status);
+      }
+      if (io.batteryLevel) {
+        const f = formatIoValue('batteryLevel', io.batteryLevel);
+        html += dataItem('Level', f.value, f.unit, f.status);
+      }
+      html += `</div>`;
+
+      // Network Section
+      html += `<div class="section-title">📶 Network</div><div class="data-grid">`;
+      if (io.gsmSignal) {
+        const f = formatIoValue('gsmSignal', io.gsmSignal);
+        html += dataItem('Signal', f.value, f.unit, f.status);
+      }
+      if (io.networkType) {
+        const f = formatIoValue('networkType', io.networkType);
+        html += dataItem('Type', f.value, f.unit, f.status);
+      }
+      if (io.activeGsmOperator) {
+        html += dataItem('Operator', io.activeGsmOperator.value, '', 'ok');
+      }
+      html += `</div>`;
+
+      // Status Section
+      html += `<div class="section-title">📊 Status</div><div class="data-grid">`;
+      if (io.movement) {
+        const f = formatIoValue('movement', io.movement);
+        html += dataItem('Motion', f.value, f.unit, f.status);
+      }
+      if (io.sleepMode) {
+        const f = formatIoValue('sleepMode', io.sleepMode);
+        html += dataItem('Sleep', f.value, f.unit, f.status);
+      }
+      if (io.gnssStatus) {
+        const f = formatIoValue('gnssStatus', io.gnssStatus);
+        html += dataItem('GNSS', f.value, f.unit, f.status);
+      }
+      if (io.gnssPdop) {
+        const f = formatIoValue('gnssPdop', io.gnssPdop);
+        html += dataItem('PDOP', f.value, f.unit, f.status);
+      }
+      if (io.gnssHdop) {
+        const f = formatIoValue('gnssHdop', io.gnssHdop);
+        html += dataItem('HDOP', f.value, f.unit, f.status);
+      }
+      html += `</div>`;
+
+      // Tamper Section (TAT240)
+      const tamper520 = io.tamperAlarm?.value;
+      const tamper20019 = io.tamperDetection?.value;
+      if (tamper520 !== undefined || tamper20019 !== undefined) {
+        html += `<div class="section-title">🔒 Tamper</div><div class="data-grid">`;
+        if (tamper520 !== undefined) {
+          const f = formatIoValue('tamperAlarm', io.tamperAlarm);
+          html += dataItem('Alarm', f.value, f.unit, f.status);
+        }
+        if (tamper20019 !== undefined) {
+          const f = formatIoValue('tamperDetection', io.tamperDetection);
+          html += dataItem('Status', f.value, f.unit, f.status);
+        }
+        html += `</div>`;
+      }
+
+      // Temperature Sensors (if any)
+      const tempSensors = Object.entries(io).filter(([k]) =>
+        k.includes('Temp') || k.includes('temp') || k.includes('Dallas') || k.includes('dallas')
+      );
+      if (tempSensors.length > 0) {
+        html += `<div class="section-title">🌡️ Temperature</div><div class="data-grid">`;
+        for (const [name, data] of tempSensors) {
+          const f = formatIoValue(name, data);
+          const label = name.replace('obd', '').replace('dallas', 'Dallas ').replace('ble', 'BLE ').replace('eye', 'EYE ');
+          html += dataItem(label, f.value, f.unit, f.status);
+        }
+        html += `</div>`;
+      }
+
+      // Humidity Sensors (if any)
+      const humiditySensors = Object.entries(io).filter(([k]) => k.includes('Humidity') || k.includes('humidity'));
+      if (humiditySensors.length > 0) {
+        html += `<div class="section-title">💧 Humidity</div><div class="data-grid">`;
+        for (const [name, data] of humiditySensors) {
+          const f = formatIoValue(name, data);
+          html += dataItem(name.replace('ble', 'BLE ').replace('eye', 'EYE '), f.value, f.unit, f.status);
+        }
+        html += `</div>`;
+      }
+
+      // Fuel Sensors (if any)
+      const fuelSensors = Object.entries(io).filter(([k]) =>
+        k.includes('fuel') || k.includes('Fuel') || k.includes('lls')
+      );
+      if (fuelSensors.length > 0) {
+        html += `<div class="section-title">⛽ Fuel</div><div class="data-grid">`;
+        for (const [name, data] of fuelSensors) {
+          const f = formatIoValue(name, data);
+          html += dataItem(name.replace('obd', '').replace('lls', 'LLS '), f.value, f.unit, f.status);
+        }
+        html += `</div>`;
+      }
+
+      // Event trigger
+      if (record.io?.eventTrigger) {
+        html += `<div class="section-title">⚡ Event Trigger</div><div class="data-grid">`;
+        html += dataItem('Triggered by', record.io.eventTrigger.name, '', 'ok');
+        html += dataItem('ID', record.io.eventIoId, '', 'ok');
+        html += `</div>`;
+      }
+
+      // Timestamp
+      html += `<div class="section-title">🕐 Time</div><div class="data-grid">`;
+      html += dataItem('Device Time', new Date(record.datetime).toLocaleString(), '', 'ok');
+      if (record.receivedAt) {
+        html += dataItem('Received', new Date(record.receivedAt).toLocaleTimeString(), '', 'ok');
+      }
+      html += `</div>`;
+
+      container.innerHTML = html;
+    }
+
+    function dataItem(label, value, unit = '', status = '') {
+      return `<div class="data-item"><div class="data-label">${label}</div><div class="data-value ${status}">${value}${unit ? `<span class="data-unit">${unit}</span>` : ''}</div></div>`;
+    }
+
+    function addLog(type, message, jsonData = null) {
+      const container = document.getElementById('logList');
+      const time = new Date().toLocaleTimeString();
+      const entry = document.createElement('div');
+      entry.className = 'log-entry';
+
+      let html = `<span class="log-time">${time}</span> <span class="log-${type}">${message}</span>`;
+
+      if (jsonData) {
+        // Add summary of key data
+        const gps = jsonData.gps || {};
+        const io = jsonData.io?.raw || {};
+        const hasGps = gps.latitude !== 0 || gps.longitude !== 0;
+        const hasTamper = 'io_520' in io || 'io_20019' in io;
+
+        let summary = [];
+        if (hasGps) summary.push(`GPS:${gps.latitude?.toFixed(4)},${gps.longitude?.toFixed(4)}`);
+        else summary.push('GPS:none');
+        if (io.io_240 !== undefined) summary.push(`Mov:${io.io_240}`);
+        if (hasTamper) summary.push('TAMPER!');
+
+        html += `<span class="log-expand">[${summary.join(' | ')}] ▼</span>`;
+        html += `<div class="log-json">${JSON.stringify(jsonData, null, 2)}</div>`;
+
+        entry.onclick = () => entry.classList.toggle('expanded');
+      }
+
+      entry.innerHTML = html;
+      if (jsonData) entry.onclick = () => entry.classList.toggle('expanded');
+
+      container.insertBefore(entry, container.firstChild);
+      while (container.children.length > 100) container.removeChild(container.lastChild);
+    }
+
+    function fetchDevices() {
+      fetch('/api/devices').then(r => r.json()).then(data => {
+        devices = data;
+        renderDevices();
+      }).catch(() => {});
+    }
+
+    // Request notification permission
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+
+    // Debug panel
+    let debugVisible = false;
+    let lastRawRecord = null;
+
+    function toggleDebug() {
+      debugVisible = !debugVisible;
+      document.getElementById('debugCard').style.display = debugVisible ? 'block' : 'none';
+      document.getElementById('debugToggle').classList.toggle('active', debugVisible);
+      if (debugVisible && latestRecord) {
+        renderDebug(latestRecord);
+      }
+    }
+
+    function renderDebug(record) {
+      if (!debugVisible) return;
+      lastRawRecord = record;
+
+      const container = document.getElementById('debugContainer');
+      let html = '';
+
+      // Timestamp & Meta
+      html += `<div class="debug-section">`;
+      html += `<div class="debug-section-title">Record Info</div>`;
+      html += debugRow('Timestamp', record.timestamp);
+      html += debugRow('DateTime', record.datetime);
+      html += debugRow('Priority', record.priority);
+      html += debugRow('Received At', record.receivedAt);
+      html += debugRow('IMEI', record.imei);
+      html += `</div>`;
+
+      // GPS
+      html += `<div class="debug-section">`;
+      html += `<div class="debug-section-title">GPS Data</div>`;
+      if (record.gps) {
+        html += debugRow('Latitude', record.gps.latitude);
+        html += debugRow('Longitude', record.gps.longitude);
+        html += debugRow('Altitude', record.gps.altitude + ' m');
+        html += debugRow('Speed', record.gps.speed + ' km/h');
+        html += debugRow('Angle', record.gps.angle + '°');
+        html += debugRow('Satellites', record.gps.satellites);
+        html += debugRow('Valid', record.gps.valid ? 'Yes' : 'No', !record.gps.valid);
+      }
+      if (record.lastKnownPosition) {
+        html += debugRow('Last Known Lat', record.lastKnownPosition.latitude);
+        html += debugRow('Last Known Lon', record.lastKnownPosition.longitude);
+        html += debugRow('Last Known Time', record.lastKnownPosition.timestamp);
+      }
+      html += `</div>`;
+
+      // Event Trigger
+      html += `<div class="debug-section">`;
+      html += `<div class="debug-section-title">Event Trigger</div>`;
+      if (record.io) {
+        html += debugRow('Event IO ID', record.io.eventIoId);
+        html += debugRow('Trigger Name', record.io.eventTrigger?.name || 'N/A');
+        html += debugRow('Trigger Desc', record.io.eventTrigger?.description || 'N/A');
+      }
+      html += `</div>`;
+
+      // Parsed IO
+      html += `<div class="debug-section">`;
+      html += `<div class="debug-section-title">Parsed IO Parameters</div>`;
+      if (record.io?.parsed) {
+        const sorted = Object.entries(record.io.parsed).sort((a, b) => a[1].id - b[1].id);
+        for (const [key, data] of sorted) {
+          const isAlert = key.toLowerCase().includes('tamper') && (data.value === 0 || data.value === 3);
+          html += debugRow(`[${data.id}] ${key}`, `${data.value}${data.unit ? ' ' + data.unit : ''}`, isAlert);
+        }
+      }
+      html += `</div>`;
+
+      // Raw IO
+      html += `<div class="debug-section">`;
+      html += `<div class="debug-section-title">Raw IO Data</div>`;
+      if (record.io?.raw) {
+        const sorted = Object.entries(record.io.raw).sort((a, b) => {
+          const idA = parseInt(a[0].replace('io_', ''));
+          const idB = parseInt(b[0].replace('io_', ''));
+          return idA - idB;
+        });
+        for (const [key, value] of sorted) {
+          html += debugRow(key, value);
+        }
+      }
+      html += `</div>`;
+
+      // Full JSON
+      html += `<div class="debug-section">`;
+      html += `<div class="debug-section-title">Raw JSON</div>`;
+      html += `<div class="debug-raw">${JSON.stringify(record, null, 2)}</div>`;
+      html += `</div>`;
+
+      container.innerHTML = html;
+    }
+
+    function debugRow(key, value, isAlert = false) {
+      return `<div class="debug-row"><span class="debug-key">${key}</span><span class="debug-value${isAlert ? ' alert' : ''}">${value}</span></div>`;
+    }
+
+    function copyDebug() {
+      if (lastRawRecord) {
+        navigator.clipboard.writeText(JSON.stringify(lastRawRecord, null, 2))
+          .then(() => addLog('system', 'Debug JSON copied to clipboard'))
+          .catch(() => addLog('system', 'Failed to copy'));
+      }
+    }
+
+    // Update debug when new data arrives
+    const originalRenderAllData = renderAllData;
+    renderAllData = function(record) {
+      originalRenderAllData(record);
+      renderDebug(record);
+    };
+
+    // Start
+    connect();
+  </script>
+</body>
+</html>

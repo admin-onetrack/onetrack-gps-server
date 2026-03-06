@@ -1,0 +1,17 @@
+{
+  "name": "teltonika-server",
+  "version": "1.0.0",
+  "description": "Teltonika GPS tracking server with Codec 8 support",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node src/server.js"
+  },
+  "keywords": ["teltonika", "gps", "tracking", "codec8"],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^5.2.1",
+    "ws": "^8.18.3"
+  }
+}
